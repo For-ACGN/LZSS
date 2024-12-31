@@ -15,11 +15,11 @@ const (
 func Compress(data []byte) []byte {
 	var (
 		window  []byte
-		dataPtr int
 		flag    byte
 		flagPtr int
 		fCtr    int
 	)
+	dataPtr := 0
 	dataLen := len(data)
 	output := make([]byte, len(data)*9/8)
 	outPtr := 1
@@ -27,19 +27,15 @@ func Compress(data []byte) []byte {
 	buf := make([]byte, 2)
 	for dataPtr < dataLen {
 		rem := dataLen - dataPtr
-		if rem < maxMatchLength {
-			output[flagPtr] = flag
-			block := data[dataPtr:]
-			copy(output[outPtr:], block)
-			outPtr += len(block)
-			break
-		}
 		// search the same data in current window
 		var (
 			offset int
 			length int
 		)
 		for l := minMatchLength; l <= maxMatchLength; l++ {
+			if rem < l {
+				break
+			}
 			idx := bytes.Index(window, data[dataPtr:dataPtr+l])
 			if idx == -1 {
 				break
@@ -86,5 +82,53 @@ func Compress(data []byte) []byte {
 		}
 		window = data[start:dataPtr]
 	}
+	// process the final flag block
+	if fCtr != 0 {
+		flag <<= byte(7 - fCtr)
+		output[flagPtr] = flag
+	}
 	return output[:outPtr]
+}
+
+// Decompress is used to decompress the compressed data.
+func Decompress(data []byte, raw int) []byte {
+	var flag [8]bool
+	fIdx := 8
+	output := make([]byte, raw)
+	outPtr := 0
+	dataPtr := 0
+	dataLen := len(data)
+	for dataPtr < dataLen {
+		// check need read flag block
+		if fIdx == 8 {
+			b := data[dataPtr]
+			flag[0] = (b & (1 << 7)) != 0
+			flag[1] = (b & (1 << 6)) != 0
+			flag[2] = (b & (1 << 5)) != 0
+			flag[3] = (b & (1 << 4)) != 0
+			flag[4] = (b & (1 << 3)) != 0
+			flag[5] = (b & (1 << 2)) != 0
+			flag[6] = (b & (1 << 1)) != 0
+			flag[7] = (b & (1 << 0)) != 0
+			dataPtr++
+			fIdx = 0
+		}
+		if flag[fIdx] {
+			mark := binary.LittleEndian.Uint16(data[dataPtr:])
+			offset := int(mark>>4 + 1)
+			length := int(mark&0xF + minMatchLength)
+			start := outPtr - offset
+			block := output[start : start+length]
+			copy(output[outPtr:], block)
+			dataPtr += 2
+			outPtr += length
+		} else {
+			output[outPtr] = data[dataPtr]
+			dataPtr++
+			outPtr++
+		}
+		// update flag index
+		fIdx++
+	}
+	return output
 }
