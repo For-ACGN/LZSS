@@ -30,7 +30,7 @@ func Compress(data []byte, windowSize int) ([]byte, error) {
 	)
 	dataPtr := 0
 	dataLen := len(data)
-	output := make([]byte, len(data)*9/8)
+	output := make([]byte, len(data)*9/8+1)
 	outPtr := 1
 	// for encode offset+length
 	buf := make([]byte, 2)
@@ -102,14 +102,14 @@ func Compress(data []byte, windowSize int) ([]byte, error) {
 // Decompress is used to decompress the data with raw size.
 func Decompress(data []byte, rawSize int) []byte {
 	var flag [8]bool
-	fIdx := 8
+	flagIdx := 8
 	output := make([]byte, rawSize)
 	outPtr := 0
 	dataPtr := 0
 	dataLen := len(data)
 	for dataPtr < dataLen {
 		// check need read flag block
-		if fIdx == 8 {
+		if flagIdx == 8 {
 			b := data[dataPtr]
 			flag[0] = (b & (1 << 7)) != 0
 			flag[1] = (b & (1 << 6)) != 0
@@ -120,9 +120,9 @@ func Decompress(data []byte, rawSize int) []byte {
 			flag[6] = (b & (1 << 1)) != 0
 			flag[7] = (b & (1 << 0)) != 0
 			dataPtr++
-			fIdx = 0
+			flagIdx = 0
 		}
-		if flag[fIdx] {
+		if flag[flagIdx] {
 			mark := binary.LittleEndian.Uint16(data[dataPtr:])
 			offset := int(mark>>4 + 1)
 			length := int(mark&0xF + minMatchLength)
@@ -137,7 +137,7 @@ func Decompress(data []byte, rawSize int) []byte {
 			outPtr++
 		}
 		// update flag index
-		fIdx++
+		flagIdx++
 	}
 	return output
 }
