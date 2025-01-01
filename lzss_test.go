@@ -2,6 +2,7 @@ package lzss
 
 import (
 	"fmt"
+	"math/rand"
 	"os"
 	"testing"
 	"time"
@@ -33,7 +34,7 @@ func TestCompress(t *testing.T) {
 	})
 
 	t.Run("invalid window size", func(t *testing.T) {
-		data, err := Compress(raw, maxWindowSize+1)
+		data, err := Compress(raw, maximumWindowSize+1)
 		require.EqualError(t, err, "invalid window size")
 		require.Nil(t, data)
 	})
@@ -58,4 +59,27 @@ func TestCompress(t *testing.T) {
 			require.Equal(t, raw, data)
 		}
 	})
+}
+
+func TestCompress_Fuzz(t *testing.T) {
+	for i := 0; i < 1000; i++ {
+		raw := make([]byte, 0, 32*1024)
+		// padding random data
+		for j := 0; j < 1000; j++ {
+			switch rand.Intn(2) {
+			case 0:
+				for k := 0; k < 64; k++ {
+					raw = append(raw, byte(rand.Intn(4)))
+				}
+			case 1:
+				for k := 0; k < 32; k++ {
+					raw = append(raw, byte(rand.Intn(6)))
+				}
+			}
+		}
+		data, err := Compress(raw, 1024)
+		require.NoError(t, err)
+		data = Decompress(data, len(raw))
+		require.Equal(t, raw, data)
+	}
 }

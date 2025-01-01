@@ -11,12 +11,12 @@ const (
 	maxMatchLength = 18
 
 	defaultWindowSize = 1024
-	maxWindowSize     = 4096
+	maximumWindowSize = 4096
 )
 
 // Compress is used to compress raw data with window size.
 func Compress(data []byte, windowSize int) ([]byte, error) {
-	if windowSize > maxWindowSize || windowSize < 0 {
+	if windowSize > maximumWindowSize || windowSize < 0 {
 		return nil, errors.New("invalid window size")
 	}
 	if windowSize == 0 {
@@ -95,6 +95,8 @@ func Compress(data []byte, windowSize int) ([]byte, error) {
 	if flagCtr != 0 {
 		flag <<= byte(7 - flagCtr)
 		output[flagPtr] = flag
+	} else {
+		outPtr-- // rollback pointer
 	}
 	return output[:outPtr], nil
 }
