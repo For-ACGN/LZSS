@@ -3,21 +3,30 @@ package lzss
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 )
 
 const (
 	minMatchLength = 3
 	maxMatchLength = 18
-	windowSize     = 2048
+
+	defaultWindowSize = 1024
+	maxWindowSize     = 4096
 )
 
-// Compress is used to compress raw data.
-func Compress(data []byte) []byte {
+// Compress is used to compress raw data with window size.
+func Compress(data []byte, windowSize int) ([]byte, error) {
+	if windowSize > maxWindowSize || windowSize < 0 {
+		return nil, errors.New("invalid window size")
+	}
+	if windowSize == 0 {
+		windowSize = defaultWindowSize
+	}
 	var (
 		window  []byte
 		flag    byte
 		flagPtr int
-		fCtr    int
+		flagCtr int
 	)
 	dataPtr := 0
 	dataLen := len(data)
@@ -57,17 +66,17 @@ func Compress(data []byte) []byte {
 			outPtr++
 		}
 		// update flag block
-		if fCtr == 7 {
+		if flagCtr == 7 {
 			output[flagPtr] = flag
 			// update pointer
 			flagPtr = outPtr
 			outPtr++
 			// reset status
 			flag = 0
-			fCtr = 0
+			flagCtr = 0
 		} else {
 			flag <<= 1
-			fCtr++
+			flagCtr++
 		}
 		// update data pointer
 		if length != 0 {
@@ -83,18 +92,18 @@ func Compress(data []byte) []byte {
 		window = data[start:dataPtr]
 	}
 	// process the final flag block
-	if fCtr != 0 {
-		flag <<= byte(7 - fCtr)
+	if flagCtr != 0 {
+		flag <<= byte(7 - flagCtr)
 		output[flagPtr] = flag
 	}
-	return output[:outPtr]
+	return output[:outPtr], nil
 }
 
-// Decompress is used to decompress the compressed data.
-func Decompress(data []byte, raw int) []byte {
+// Decompress is used to decompress the data with raw size.
+func Decompress(data []byte, rawSize int) []byte {
 	var flag [8]bool
 	fIdx := 8
-	output := make([]byte, raw)
+	output := make([]byte, rawSize)
 	outPtr := 0
 	dataPtr := 0
 	dataLen := len(data)
