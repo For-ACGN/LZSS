@@ -102,10 +102,10 @@ func Compress(data []byte, windowSize int) ([]byte, error) {
 }
 
 // Decompress is used to decompress the data with raw size.
-func Decompress(data []byte, rawSize int) []byte {
+func Decompress(data []byte) []byte {
 	var flag [8]bool
 	flagIdx := 8
-	output := make([]byte, rawSize)
+	output := bytes.Buffer{}
 	outPtr := 0
 	dataPtr := 0
 	dataLen := len(data)
@@ -129,17 +129,17 @@ func Decompress(data []byte, rawSize int) []byte {
 			offset := int(mark>>4 + 1)
 			length := int(mark&0xF + minMatchLength)
 			start := outPtr - offset
-			block := output[start : start+length]
-			copy(output[outPtr:], block)
+			block := output.Bytes()[start : start+length]
+			output.Write(block)
 			dataPtr += 2
 			outPtr += length
 		} else {
-			output[outPtr] = data[dataPtr]
+			output.WriteByte(data[dataPtr])
 			dataPtr++
 			outPtr++
 		}
 		// update flag index
 		flagIdx++
 	}
-	return output
+	return output.Bytes()
 }

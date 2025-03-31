@@ -25,7 +25,7 @@ func TestCompress(t *testing.T) {
 		fmt.Printf("%d/%d %.2f%%\n", len(data), len(raw), ratio)
 
 		now = time.Now()
-		data = Decompress(data, len(raw))
+		data = Decompress(data)
 		fmt.Printf("decompress time: %d ms\n", time.Since(now).Milliseconds())
 		require.Equal(t, raw, data)
 
@@ -55,7 +55,7 @@ func TestCompress(t *testing.T) {
 			fmt.Printf("%d/%d, ratio: %.2f%%\n", len(data), len(raw), ratio)
 			fmt.Println()
 
-			data = Decompress(data, len(raw))
+			data = Decompress(data)
 			require.Equal(t, raw, data)
 		}
 	})
@@ -79,7 +79,7 @@ func TestCompress_Fuzz(t *testing.T) {
 		}
 		data, err := Compress(raw, 1024)
 		require.NoError(t, err)
-		data = Decompress(data, len(raw))
+		data = Decompress(data)
 		require.Equal(t, raw, data)
 	}
 }
