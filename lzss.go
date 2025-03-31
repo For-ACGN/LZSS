@@ -14,7 +14,7 @@ const (
 	maximumWindowSize = 4096
 )
 
-// Compress is used to compress raw data with window size.
+// Compress is used to compress the raw data with window size.
 func Compress(data []byte, windowSize int) ([]byte, error) {
 	if windowSize > maximumWindowSize || windowSize < 0 {
 		return nil, errors.New("invalid window size")
@@ -101,7 +101,7 @@ func Compress(data []byte, windowSize int) ([]byte, error) {
 	return output[:outPtr], nil
 }
 
-// Decompress is used to decompress the data with raw size.
+// Decompress is used to decompress the compressed data.
 func Decompress(data []byte) []byte {
 	var flag [8]bool
 	flagIdx := 8
