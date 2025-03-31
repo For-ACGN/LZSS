@@ -20,7 +20,7 @@ func main() {
     output, err := lzss.Compress(raw, 1024)
     checkError(err)
 
-    output = lzss.Decompress(output, len(raw))
+    output = lzss.Decompress(output)
     fmt.Println(bytes.Equal(raw, output))
 }
 
