@@ -43,7 +43,7 @@ const (
 //
 //	chainLen=1:  fastest          (~36%), ~93 MB/s
 //	chainLen=6:  good balance     (~44%), ~52 MB/s
-//	chainLen=16: best compression (~48%), ~7 MB/s
+//	chainLen=16: best compression (~48%), ~3.7 MB/s
 func Compress(data []byte, windowSize, chainLen int) ([]byte, error) {
 	if windowSize < 0 || windowSize > MaximumWindowSize {
 		return nil, errors.New("invalid window size")
@@ -96,8 +96,7 @@ func compressWithSingleHashCandidate(data []byte, windowSize int) []byte {
 						maxLen = maxMatchLength
 					}
 					matchLen := 0
-					for matchLen < maxLen &&
-						data[candidate+matchLen] == data[dataPtr+matchLen] {
+					for matchLen < maxLen && data[candidate+matchLen] == data[dataPtr+matchLen] {
 						matchLen++
 					}
 					if matchLen >= minMatchLength {
@@ -192,8 +191,7 @@ func compressWithNHashCandidate(data []byte, windowSize, chainLen int) []byte {
 					continue
 				}
 				matchLen := 0
-				for matchLen < maxLen &&
-					data[candidate+matchLen] == data[dataPtr+matchLen] {
+				for matchLen < maxLen && data[candidate+matchLen] == data[dataPtr+matchLen] {
 					matchLen++
 				}
 				if matchLen >= minMatchLength && matchLen > length {
@@ -273,16 +271,44 @@ func compressWithBruteForce(data []byte, windowSize int) []byte {
 			offset int
 			length int
 		)
-		for l := minMatchLength; l <= maxMatchLength; l++ {
-			if rem < l {
-				break
+		if rem >= minMatchLength {
+			// scan the window once, finding all 3-byte prefix matches
+			// and extending each to find the best (longest then nearest) match
+			sub := data[dataPtr : dataPtr+minMatchLength]
+			maxLen := rem
+			if maxLen > maxMatchLength {
+				maxLen = maxMatchLength
 			}
-			idx := bytes.Index(window, data[dataPtr:dataPtr+l])
-			if idx == -1 {
-				break
+			bestOffset := 0
+			bestLength := 0
+			pos := 0
+			for pos <= len(window)-minMatchLength {
+				idx := bytes.Index(window[pos:], sub)
+				if idx == -1 {
+					break
+				}
+				absPos := pos + idx
+				// extend the match
+				matchLen := minMatchLength
+				for matchLen < maxLen && absPos+matchLen < len(window) &&
+					window[absPos+matchLen] == data[dataPtr+matchLen] {
+					matchLen++
+				}
+				newOffset := len(window) - absPos - 1
+				// prefer longer matches; equal length → prefer nearer (smaller offset)
+				if matchLen > bestLength || (matchLen == bestLength && newOffset < bestOffset) {
+					bestLength = matchLen
+					bestOffset = newOffset
+					if matchLen == maxLen {
+						break
+					}
+				}
+				pos = absPos + 1
 			}
-			offset = len(window) - idx - 1
-			length = l
+			if bestLength >= minMatchLength {
+				offset = bestOffset
+				length = bestLength
+			}
 		}
 		// set compress flag and write data
 		if length != 0 {
@@ -334,8 +360,10 @@ func compressWithBruteForce(data []byte, windowSize int) []byte {
 }
 
 // hash3 computes a 12-bit hash of 3 consecutive bytes.
+// reference Multiply-Shift Hash.
 func hash3(b []byte) uint32 {
-	return (uint32(b[0])<<10 ^ uint32(b[1])<<5 ^ uint32(b[2])) & (hashSize - 1)
+	v := uint32(b[0])<<16 | uint32(b[1])<<8 | uint32(b[2])
+	return (v * 0x1E35A7BD) >> (32 - hashBits)
 }
 
 // Decompress is used to decompress LZSS compressed data.
