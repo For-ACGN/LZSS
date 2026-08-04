@@ -15,9 +15,9 @@ func TestCompress(t *testing.T) {
 	raw, err := os.ReadFile("testdata/gofmt.dat")
 	require.NoError(t, err)
 
-	t.Run("common", func(t *testing.T) {
+	t.Run("single hash candidate", func(t *testing.T) {
 		now := time.Now()
-		data, err := Compress(raw, 0)
+		data, err := Compress(raw, MaximumWindowSize, MinimumChainLen)
 		require.NoError(t, err)
 		fmt.Printf("compress time: %d ms\n", time.Since(now).Milliseconds())
 
@@ -31,16 +31,36 @@ func TestCompress(t *testing.T) {
 		require.Equal(t, raw, decompressed)
 	})
 
-	t.Run("invalid window size", func(t *testing.T) {
-		data, err := Compress(raw, maximumWindowSize+1)
-		require.EqualError(t, err, "lzss: invalid window size")
-		require.Nil(t, data)
+	t.Run("n hash candidate", func(t *testing.T) {
+		now := time.Now()
+		data, err := Compress(raw, MaximumWindowSize, 6)
+		require.NoError(t, err)
+		fmt.Printf("compress time: %d ms\n", time.Since(now).Milliseconds())
+
+		ratio := (1 - float32(len(data))/float32(len(raw))) * 100
+		fmt.Printf("%d/%d %.2f%%\n", len(data), len(raw), ratio)
+
+		now = time.Now()
+		decompressed, err := Decompress(data)
+		require.NoError(t, err)
+		fmt.Printf("decompress time: %d ms\n", time.Since(now).Milliseconds())
+		require.Equal(t, raw, decompressed)
 	})
 
-	t.Run("invalid chain length", func(t *testing.T) {
-		data, err := CompressWith(raw, 0, -1)
-		require.EqualError(t, err, "lzss: invalid chain length")
-		require.Nil(t, data)
+	t.Run("brute force", func(t *testing.T) {
+		now := time.Now()
+		data, err := Compress(raw, MaximumWindowSize, MaximumChainLen)
+		require.NoError(t, err)
+		fmt.Printf("compress time: %d ms\n", time.Since(now).Milliseconds())
+
+		ratio := (1 - float32(len(data))/float32(len(raw))) * 100
+		fmt.Printf("%d/%d %.2f%%\n", len(data), len(raw), ratio)
+
+		now = time.Now()
+		decompressed, err := Decompress(data)
+		require.NoError(t, err)
+		fmt.Printf("decompress time: %d ms\n", time.Since(now).Milliseconds())
+		require.Equal(t, raw, decompressed)
 	})
 
 	t.Run("various window size", func(t *testing.T) {
@@ -51,7 +71,7 @@ func TestCompress(t *testing.T) {
 			fmt.Println("window size:", windowSize)
 
 			now := time.Now()
-			data, err := Compress(raw, windowSize)
+			data, err := Compress(raw, windowSize, MinimumChainLen)
 			require.NoError(t, err)
 			fmt.Printf("compress time: %d ms\n", time.Since(now).Milliseconds())
 
@@ -64,34 +84,28 @@ func TestCompress(t *testing.T) {
 			require.Equal(t, raw, decompressed)
 		}
 	})
-}
 
-func TestCompressWith(t *testing.T) {
-	raw, err := os.ReadFile("testdata/gofmt.dat")
-	require.NoError(t, err)
+	t.Run("invalid windows size", func(t *testing.T) {
+		data, err := Compress(raw, MaximumWindowSize+1, MinimumChainLen)
+		require.EqualError(t, err, "invalid window size")
+		require.Nil(t, data)
+	})
 
-	for _, cl := range []int{0, 1, 3, 6, 8} {
-		t.Run(fmt.Sprintf("chainLen=%d", cl), func(t *testing.T) {
-			now := time.Now()
-			data, err := CompressWith(raw, 4096, cl)
-			require.NoError(t, err)
-			elapsed := time.Since(now)
-
-			ratio := (1 - float32(len(data))/float32(len(raw))) * 100
-			fmt.Printf("chainLen=%d: %d ms, %d/%d, ratio: %.2f%%\n",
-				cl, elapsed.Milliseconds(), len(data), len(raw), ratio)
-
-			decompressed, err := Decompress(data)
-			require.NoError(t, err)
-			require.Equal(t, raw, decompressed)
-		})
-	}
+	t.Run("invalid chain length", func(t *testing.T) {
+		data, err := Compress(raw, DefaultWindowSize, -1)
+		require.EqualError(t, err, "invalid chain length")
+		require.Nil(t, data)
+	})
 }
 
 func TestCompress_Fuzz(t *testing.T) {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-	for _, cl := range []int{0, 1, 3, 6} {
-		t.Run(fmt.Sprintf("chainLen=%d", cl), func(t *testing.T) {
+	for _, cl := range []int{
+		MinimumChainLen,
+		3, 6, 9,
+		MaximumChainLen,
+	} {
+		t.Run(fmt.Sprintf("chain len=%d", cl), func(t *testing.T) {
 			for i := 0; i < 250; i++ {
 				raw := make([]byte, 0, 32*1024)
 				for j := 0; j < 1000; j++ {
@@ -106,7 +120,7 @@ func TestCompress_Fuzz(t *testing.T) {
 						}
 					}
 				}
-				data, err := CompressWith(raw, 1024, cl)
+				data, err := Compress(raw, DefaultWindowSize, cl)
 				require.NoError(t, err)
 				decompressed, err := Decompress(data)
 				require.NoError(t, err)
@@ -121,20 +135,48 @@ func BenchmarkCompress(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	raw = append(raw, bytes.Repeat([]byte{0x00}, 30*1024*1024)...)
 
-	for _, cl := range []int{0, 1, 3, 6, 8} {
-		b.Run(fmt.Sprintf("chainLen=%d", cl), func(b *testing.B) {
-			b.SetBytes(int64(len(raw)))
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				_, err := CompressWith(raw, 4096, cl)
-				if err != nil {
-					b.Fatal(err)
+	b.Run("common executable", func(b *testing.B) {
+		for _, cl := range []int{
+			MinimumChainLen,
+			3, 6, 9,
+			MaximumChainLen,
+		} {
+			b.Run(fmt.Sprintf("chain len=%d", cl), func(b *testing.B) {
+				b.SetBytes(int64(len(raw)))
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					_, err := Compress(raw, MaximumWindowSize, cl)
+					if err != nil {
+						b.Fatal(err)
+					}
 				}
-			}
-		})
-	}
+			})
+		}
+	})
+
+	b.Run("with duplicate data", func(b *testing.B) {
+		// append duplicate data
+		raw = bytes.Clone(raw)
+		raw = append(raw, bytes.Repeat([]byte{0x00}, 32*1024*1024)...)
+
+		for _, cl := range []int{
+			MinimumChainLen,
+			3, 6, 9,
+			MaximumChainLen,
+		} {
+			b.Run(fmt.Sprintf("chain len=%d", cl), func(b *testing.B) {
+				b.SetBytes(int64(len(raw)))
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					_, err := Compress(raw, MaximumWindowSize, cl)
+					if err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		}
+	})
 }
 
 func BenchmarkDecompress(b *testing.B) {
@@ -142,7 +184,7 @@ func BenchmarkDecompress(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	compressed, err := Compress(raw, 0)
+	compressed, err := Compress(raw, MaximumWindowSize, MaximumChainLen)
 	if err != nil {
 		b.Fatal(err)
 	}
