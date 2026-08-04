@@ -41,18 +41,18 @@ const (
 //
 // Typical recommendations:
 //
-//	chainLen=1:  fastest          (~36%), ~93 MB/s
-//	chainLen=6:  good balance     (~44%), ~52 MB/s
-//	chainLen=16: best compression (~48%), ~3.7 MB/s
+//	chainLen=1:  fastest          (~36%), ~139 MB/s
+//	chainLen=6:  good balance     (~40%), ~52 MB/s
+//	chainLen=16: best compression (~42%), ~3.7 MB/s
 func Compress(data []byte, windowSize, chainLen int) ([]byte, error) {
 	if windowSize < 0 || windowSize > MaximumWindowSize {
 		return nil, errors.New("invalid window size")
 	}
-	if windowSize == 0 {
-		windowSize = DefaultWindowSize
-	}
 	if chainLen < MinimumChainLen || chainLen > MaximumChainLen {
 		return nil, errors.New("invalid chain length")
+	}
+	if windowSize == 0 {
+		windowSize = DefaultWindowSize
 	}
 	switch chainLen {
 	case MinimumChainLen:
@@ -66,10 +66,7 @@ func Compress(data []byte, windowSize, chainLen int) ([]byte, error) {
 
 func compressWithSingleHashCandidate(data []byte, windowSize int) []byte {
 	// initialize hash table
-	hashTable := make([]int, hashSize)
-	for i := range hashTable {
-		hashTable[i] = -1
-	}
+	hashTable := make([]uint16, hashSize)
 	var (
 		flag    byte
 		flagPtr int
@@ -87,8 +84,9 @@ func compressWithSingleHashCandidate(data []byte, windowSize int) []byte {
 		)
 		if rem >= minMatchLength {
 			h := hash3(data[dataPtr:])
-			candidate := hashTable[h]
-			if candidate >= 0 {
+			stored := hashTable[h]
+			if stored != 0 {
+				candidate := resolveCandidate(stored, dataPtr)
 				dist := dataPtr - candidate
 				if dist > 0 && dist <= windowSize {
 					maxLen := rem
@@ -138,7 +136,7 @@ func compressWithSingleHashCandidate(data []byte, windowSize int) []byte {
 		// update hash
 		for i := 0; i < advance && dataPtr+i+2 < dataLen; i++ {
 			h := hash3(data[dataPtr+i:])
-			hashTable[h] = dataPtr + i
+			hashTable[h] = uint16(dataPtr + i + 1)
 		}
 		dataPtr += advance
 	}
@@ -154,10 +152,7 @@ func compressWithSingleHashCandidate(data []byte, windowSize int) []byte {
 
 func compressWithNHashCandidate(data []byte, windowSize, chainLen int) []byte {
 	// initialize hash table
-	hashTable := make([]int, hashSize*chainLen)
-	for i := range hashTable {
-		hashTable[i] = -1
-	}
+	hashTable := make([]uint16, hashSize*chainLen)
 	var (
 		flag    byte
 		flagPtr int
@@ -182,10 +177,11 @@ func compressWithNHashCandidate(data []byte, windowSize, chainLen int) []byte {
 			}
 			// search hash chain
 			for i := 0; i < chainLen; i++ {
-				candidate := hashTable[base+i]
-				if candidate < 0 {
+				stored := hashTable[base+i]
+				if stored == 0 {
 					break
 				}
+				candidate := resolveCandidate(stored, dataPtr)
 				dist := dataPtr - candidate
 				if dist <= 0 || dist > windowSize {
 					continue
@@ -239,7 +235,7 @@ func compressWithNHashCandidate(data []byte, windowSize, chainLen int) []byte {
 			for j := chainLen - 1; j > 0; j-- {
 				hashTable[base+j] = hashTable[base+j-1]
 			}
-			hashTable[base] = dataPtr + i
+			hashTable[base] = uint16(dataPtr + i + 1)
 		}
 		dataPtr += advance
 	}
@@ -364,6 +360,19 @@ func compressWithBruteForce(data []byte, windowSize int) []byte {
 func hash3(b []byte) uint32 {
 	v := uint32(b[0])<<16 | uint32(b[1])<<8 | uint32(b[2])
 	return (v * 0x1E35A7BD) >> (32 - hashBits)
+}
+
+// resolveCandidate reconstructs an absolute data position from a uint16 stored value.
+// The stored value is (position + 1) as uint16, with 0 as the sentinel for "empty".
+// Since the window is at most 4096 bytes, only one 64KB block can contain the
+// candidate (-1 if same block, previous block otherwise).
+func resolveCandidate(stored uint16, dataPtr int) int {
+	lo := int(stored) - 1
+	candidate := (dataPtr & ^0xFFFF) | lo
+	if candidate > dataPtr {
+		candidate -= 1 << 16
+	}
+	return candidate
 }
 
 // Decompress is used to decompress LZSS compressed data.
