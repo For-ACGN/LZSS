@@ -17,7 +17,7 @@ func TestCompress(t *testing.T) {
 
 	t.Run("single hash candidate", func(t *testing.T) {
 		now := time.Now()
-		data, err := Compress(raw, MaximumWindowSize, MinimumChainLen)
+		data, err := Compress(raw, 0, MinimumChainLen)
 		require.NoError(t, err)
 		fmt.Printf("compress time: %d ms\n", time.Since(now).Milliseconds())
 
@@ -33,7 +33,7 @@ func TestCompress(t *testing.T) {
 
 	t.Run("n hash candidate", func(t *testing.T) {
 		now := time.Now()
-		data, err := Compress(raw, MaximumWindowSize, 6)
+		data, err := Compress(raw, 0, 6)
 		require.NoError(t, err)
 		fmt.Printf("compress time: %d ms\n", time.Since(now).Milliseconds())
 
@@ -49,7 +49,7 @@ func TestCompress(t *testing.T) {
 
 	t.Run("brute force", func(t *testing.T) {
 		now := time.Now()
-		data, err := Compress(raw, MaximumWindowSize, MaximumChainLen)
+		data, err := Compress(raw, 0, MaximumChainLen)
 		require.NoError(t, err)
 		fmt.Printf("compress time: %d ms\n", time.Since(now).Milliseconds())
 
@@ -95,6 +95,101 @@ func TestCompress(t *testing.T) {
 		data, err := Compress(raw, DefaultWindowSize, -1)
 		require.EqualError(t, err, "invalid chain length")
 		require.Nil(t, data)
+	})
+}
+
+func TestDecompress(t *testing.T) {
+	t.Run("empty", func(t *testing.T) {
+		result, err := Decompress(nil)
+		require.NoError(t, err)
+		require.Nil(t, result)
+
+		result, err = Decompress([]byte{})
+		require.NoError(t, err)
+		require.Nil(t, result)
+	})
+
+	t.Run("all literals exact flag boundary", func(t *testing.T) {
+		// flag=0x00: all 8 elements are literals.
+		data := []byte{0x00, 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'}
+		result, err := Decompress(data)
+		require.NoError(t, err)
+		require.Equal(t, []byte("ABCDEFGH"), result)
+	})
+
+	t.Run("literals with partial flag", func(t *testing.T) {
+		// Only 3 elements in the group; remaining flag bits are 0 (literals).
+		// Format: flag_byte + 3 literals.
+		// The loop exits when dataPtr reaches dataLen before processing remaining bits.
+		data := []byte{0x00, 'X', 'Y', 'Z'}
+		result, err := Decompress(data)
+		require.NoError(t, err)
+		require.Equal(t, []byte("XYZ"), result)
+	})
+
+	t.Run("simple match", func(t *testing.T) {
+		// Compress "AAAA": literal 'A' + match(offset=1, length=3).
+		// flag=0x40 (bit7=0 literal, bit6=1 match, rest 0 literal).
+		// mark = (offset-1)<<4 | (length-3) = 0<<4 | 0 = 0x0000.
+		// Plus 6 filler literals to complete the flag group (total 10 bytes).
+		flag := byte(0x40) // 0100_0000
+		matchMark := []byte{0x00, 0x00}
+		data := append([]byte{flag, 'A'}, matchMark...)
+		data = append(data, 'X', 'X', 'X', 'X', 'X', 'X') // 6 filler literals
+		result, err := Decompress(data)
+		require.NoError(t, err)
+		require.Equal(t, []byte("AAAAXXXXXX"), result)
+	})
+
+	t.Run("overlapping match", func(t *testing.T) {
+		// Decompress "AB" + match(offset=1, length=4) → "ABBBBB".
+		// flag=0x20 (bit7=0, bit6=0, bit5=1, rest 0).
+		// mark = ((1-1)<<4) | (4-3) = 0x0001.
+		// 5 filler literals to complete the group (total 10 bytes).
+		flag := byte(0x20) // 0010_0000
+		matchMark := []byte{0x01, 0x00}
+		data := append([]byte{flag, 'A', 'B'}, matchMark...)
+		data = append(data, 'X', 'X', 'X', 'X', 'X') // 5 filler literals
+		result, err := Decompress(data)
+		require.NoError(t, err)
+		require.Equal(t, []byte("ABBBBBXXXXX"), result)
+	})
+
+	t.Run("truncated match reference", func(t *testing.T) {
+		// flag=0x80 means bit7=1 (match), but only 1 data byte after flag.
+		data := []byte{0x80, 0x00}
+		result, err := Decompress(data)
+		require.EqualError(t, err, "truncated match reference")
+		require.Nil(t, result)
+	})
+
+	t.Run("truncated literal", func(t *testing.T) {
+		// Single flag byte with no following data — first element is literal.
+		data := []byte{0x00}
+		result, err := Decompress(data)
+		require.EqualError(t, err, "truncated literal")
+		require.Nil(t, result)
+	})
+
+	t.Run("truncated literal after flag read", func(t *testing.T) {
+		// Data ends exactly after reading a new flag byte, before processing any element.
+		// flag=0x7F (bit7=0 → literal, all others = 1 → matches).
+		// After reading the 1-byte flag, data is exhausted and element 0 (literal) fails.
+		data := []byte{0x7F}
+		result, err := Decompress(data)
+		require.EqualError(t, err, "truncated literal")
+		require.Nil(t, result)
+	})
+
+	t.Run("invalid match offset", func(t *testing.T) {
+		// First element literal 'A' (output len=1), second element match with offset=2.
+		// offset=2 > output len → "invalid match offset".
+		// flag=0x40 (0100_0000): bit7=0 literal, bit6=1 match.
+		// mark = ((2-1)<<4) | 0 = 0x10.
+		data := []byte{0x40, 'A', 0x10, 0x00}
+		result, err := Decompress(data)
+		require.EqualError(t, err, "invalid match offset")
+		require.Nil(t, result)
 	})
 }
 
