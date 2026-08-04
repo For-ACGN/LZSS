@@ -241,7 +241,7 @@ func BenchmarkCompress(b *testing.B) {
 				b.SetBytes(int64(len(raw)))
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
-					_, err := Compress(raw, MaximumWindowSize, cl)
+					_, err = Compress(raw, MaximumWindowSize, cl)
 					if err != nil {
 						b.Fatal(err)
 					}
@@ -264,7 +264,7 @@ func BenchmarkCompress(b *testing.B) {
 				b.SetBytes(int64(len(raw)))
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
-					_, err := Compress(raw, MaximumWindowSize, cl)
+					_, err = Compress(raw, MaximumWindowSize, cl)
 					if err != nil {
 						b.Fatal(err)
 					}
@@ -283,10 +283,10 @@ func BenchmarkDecompress(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	b.SetBytes(int64(len(compressed)))
+	b.SetBytes(int64(len(raw)))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := Decompress(compressed)
+		_, err = Decompress(compressed)
 		if err != nil {
 			b.Fatal(err)
 		}
