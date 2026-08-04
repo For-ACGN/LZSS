@@ -17,10 +17,12 @@ func main() {
     raw, err := os.ReadFile("test.dat")
     checkError(err)
 
-    output, err := lzss.Compress(raw, 1024)
+    output, err := lzss.Compress(raw, 1024, 6)
     checkError(err)
 
-    output = lzss.Decompress(output)
+    output, err = lzss.Decompress(output)
+	checkError(err)
+
     fmt.Println(bytes.Equal(raw, output))
 }
 
