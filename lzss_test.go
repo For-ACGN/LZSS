@@ -16,67 +16,19 @@ func TestCompress(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("single hash candidate", func(t *testing.T) {
-		now := time.Now()
-		data, err := Compress(raw, 0, MinimumChainLen)
-		require.NoError(t, err)
-		fmt.Printf("compress time: %d ms\n", time.Since(now).Milliseconds())
-
-		ratio := (1 - float32(len(data))/float32(len(raw))) * 100
-		fmt.Printf("%d/%d %.2f%%\n", len(data), len(raw), ratio)
-
-		now = time.Now()
-		decompressed, err := Decompress(data)
-		require.NoError(t, err)
-		fmt.Printf("decompress time: %d ms\n", time.Since(now).Milliseconds())
-		require.Equal(t, raw, decompressed)
+		testCompress(t, raw, 0, MinimumChainLen)
 	})
 
 	t.Run("n hash candidate", func(t *testing.T) {
-		now := time.Now()
-		data, err := Compress(raw, 0, DefaultChainLen)
-		require.NoError(t, err)
-		fmt.Printf("compress time: %d ms\n", time.Since(now).Milliseconds())
-
-		ratio := (1 - float32(len(data))/float32(len(raw))) * 100
-		fmt.Printf("%d/%d %.2f%%\n", len(data), len(raw), ratio)
-
-		now = time.Now()
-		decompressed, err := Decompress(data)
-		require.NoError(t, err)
-		fmt.Printf("decompress time: %d ms\n", time.Since(now).Milliseconds())
-		require.Equal(t, raw, decompressed)
+		testCompress(t, raw, 0, DefaultChainLen)
 	})
 
 	t.Run("brute force", func(t *testing.T) {
-		now := time.Now()
-		data, err := Compress(raw, 0, MaximumChainLen)
-		require.NoError(t, err)
-		fmt.Printf("compress time: %d ms\n", time.Since(now).Milliseconds())
-
-		ratio := (1 - float32(len(data))/float32(len(raw))) * 100
-		fmt.Printf("%d/%d %.2f%%\n", len(data), len(raw), ratio)
-
-		now = time.Now()
-		decompressed, err := Decompress(data)
-		require.NoError(t, err)
-		fmt.Printf("decompress time: %d ms\n", time.Since(now).Milliseconds())
-		require.Equal(t, raw, decompressed)
+		testCompress(t, raw, 0, MaximumChainLen)
 	})
 
 	t.Run("default window and chain", func(t *testing.T) {
-		now := time.Now()
-		data, err := Compress(raw, 0, 0)
-		require.NoError(t, err)
-		fmt.Printf("compress time: %d ms\n", time.Since(now).Milliseconds())
-
-		ratio := (1 - float32(len(data))/float32(len(raw))) * 100
-		fmt.Printf("%d/%d %.2f%%\n", len(data), len(raw), ratio)
-
-		now = time.Now()
-		decompressed, err := Decompress(data)
-		require.NoError(t, err)
-		fmt.Printf("decompress time: %d ms\n", time.Since(now).Milliseconds())
-		require.Equal(t, raw, decompressed)
+		testCompress(t, raw, 0, 0)
 	})
 
 	t.Run("various window size", func(t *testing.T) {
@@ -112,6 +64,22 @@ func TestCompress(t *testing.T) {
 		require.EqualError(t, err, "invalid chain length")
 		require.Nil(t, data)
 	})
+}
+
+func testCompress(t *testing.T, raw []byte, windowSize, chainLen int) {
+	now := time.Now()
+	compressed, err := Compress(raw, windowSize, chainLen)
+	require.NoError(t, err)
+	fmt.Printf("compress time: %d ms\n", time.Since(now).Milliseconds())
+
+	ratio := (1 - float32(len(compressed))/float32(len(raw))) * 100
+	fmt.Printf("%d/%d %.2f%%\n", len(compressed), len(raw), ratio)
+
+	now = time.Now()
+	decompressed, err := Decompress(compressed)
+	require.NoError(t, err)
+	fmt.Printf("decompress time: %d ms\n", time.Since(now).Milliseconds())
+	require.Equal(t, raw, decompressed)
 }
 
 func TestDecompress(t *testing.T) {
