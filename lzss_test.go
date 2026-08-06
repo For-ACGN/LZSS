@@ -33,7 +33,7 @@ func TestCompress(t *testing.T) {
 
 	t.Run("n hash candidate", func(t *testing.T) {
 		now := time.Now()
-		data, err := Compress(raw, 0, 6)
+		data, err := Compress(raw, 0, DefaultChainLen)
 		require.NoError(t, err)
 		fmt.Printf("compress time: %d ms\n", time.Since(now).Milliseconds())
 
@@ -63,15 +63,31 @@ func TestCompress(t *testing.T) {
 		require.Equal(t, raw, decompressed)
 	})
 
+	t.Run("default window and chain", func(t *testing.T) {
+		now := time.Now()
+		data, err := Compress(raw, 0, 0)
+		require.NoError(t, err)
+		fmt.Printf("compress time: %d ms\n", time.Since(now).Milliseconds())
+
+		ratio := (1 - float32(len(data))/float32(len(raw))) * 100
+		fmt.Printf("%d/%d %.2f%%\n", len(data), len(raw), ratio)
+
+		now = time.Now()
+		decompressed, err := Decompress(data)
+		require.NoError(t, err)
+		fmt.Printf("decompress time: %d ms\n", time.Since(now).Milliseconds())
+		require.Equal(t, raw, decompressed)
+	})
+
 	t.Run("various window size", func(t *testing.T) {
 		for _, windowSize := range []int{
-			32, 64, 128, 256, 512,
-			1024, 1536, 2048, 4096,
+			128, 256, 512, 1024,
+			1536, 2048, 3072, 4096,
 		} {
 			fmt.Println("window size:", windowSize)
 
 			now := time.Now()
-			data, err := Compress(raw, windowSize, MinimumChainLen)
+			data, err := Compress(raw, windowSize, 0)
 			require.NoError(t, err)
 			fmt.Printf("compress time: %d ms\n", time.Since(now).Milliseconds())
 
@@ -86,7 +102,7 @@ func TestCompress(t *testing.T) {
 	})
 
 	t.Run("invalid windows size", func(t *testing.T) {
-		data, err := Compress(raw, MaximumWindowSize+1, MinimumChainLen)
+		data, err := Compress(raw, MaximumWindowSize+1, 0)
 		require.EqualError(t, err, "invalid window size")
 		require.Nil(t, data)
 	})
