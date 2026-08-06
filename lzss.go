@@ -5,10 +5,11 @@ import (
 	"errors"
 )
 
-// about search windows size
+// about search window size.
 const (
-	DefaultWindowSize = 1024
+	MinimumWindowSize = 128
 	MaximumWindowSize = 4096
+	DefaultWindowSize = 1024
 )
 
 // when chain length is MaximumChainLen, it will use brute-force search
@@ -17,6 +18,7 @@ const (
 const (
 	MinimumChainLen = 1
 	MaximumChainLen = 16
+	DefaultChainLen = 6
 )
 
 const (
@@ -32,8 +34,8 @@ const (
 //
 // Parameters:
 //
-//	windowSize: sliding window size (1-4096, 0 for default 1024)
-//	chainLen: hash chain length for match search
+//	windowSize: sliding window size (128-4096, 0 for default 1024)
+//	chainLen: hash chain length for match search (1-16, 0 for default 6)
 //	  1 = single hash candidate (fastest, worst compression)
 //	  N = N-candidate hash chain (trade-off between speed and compression)
 //	 16 = brute-force (bytes.Index, the best compression, slowest)
@@ -44,14 +46,17 @@ const (
 //	chainLen=6:  good balance     (~40%), ~52 MB/s
 //	chainLen=16: best compression (~42%), ~3.7 MB/s
 func Compress(data []byte, windowSize, chainLen int) ([]byte, error) {
-	if windowSize < 0 || windowSize > MaximumWindowSize {
-		return nil, errors.New("invalid window size")
-	}
-	if chainLen < MinimumChainLen || chainLen > MaximumChainLen {
-		return nil, errors.New("invalid chain length")
-	}
 	if windowSize == 0 {
 		windowSize = DefaultWindowSize
+	}
+	if chainLen == 0 {
+		chainLen = DefaultChainLen
+	}
+	if windowSize < MinimumWindowSize || windowSize > MaximumWindowSize {
+		return nil, errors.New("invalid window size")
+	}
+	if chainLen < 0 || chainLen > MaximumChainLen {
+		return nil, errors.New("invalid chain length")
 	}
 	switch chainLen {
 	case MinimumChainLen:
@@ -290,7 +295,7 @@ func compressWithBruteForce(data []byte, windowSize int) []byte {
 					matchLen++
 				}
 				newOffset := len(window) - absPos - 1
-				// prefer longer matches; equal length → prefer nearer (smaller offset)
+				// prefer longer matches; equal length -> prefer nearer (smaller offset)
 				if matchLen > bestLen || (matchLen == bestLen && newOffset < bestOff) {
 					bestLen = matchLen
 					bestOff = newOffset
